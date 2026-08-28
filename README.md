@@ -130,6 +130,33 @@ public function confettiMissing(string $ref, string $reason): void
 }
 ```
 
+## Usage (JavaScript)
+
+`<native:confetti>` itself has no JavaScript equivalent — it's a compiled native view (SwiftUI on
+iOS, Compose on Android), not a web component, so it exists only inside NativePHP's native-UI
+screens. `resources/js/` exists for the one piece an Inertia (Vue/React) frontend CAN reach:
+triggering an already-mounted element without a round trip through a Livewire action.
+
+```js
+import { burst, Events } from 'noehassiel-confetti';
+
+// Same ref semantics as the PHP facade — omit it for the default element.
+await burst();
+await burst('task-list');
+```
+
+Listen for a missed target with the core bridge's `on()`, same as any other native event — the
+name is exported so you never hardcode the namespaced string:
+
+```js
+import { on } from '#nativephp';
+import { Events } from 'noehassiel-confetti';
+
+on(Events.ConfettiBurstFailed, ({ ref, reason }) => {
+    console.warn('No confetti element mounted for ref', ref, reason);
+});
+```
+
 ## Attributes
 
 | Attribute | Type | Default | Notes |

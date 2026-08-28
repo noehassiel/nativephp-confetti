@@ -85,6 +85,26 @@ the top-center — most other presets fire from one point. It rides a `groups` p
 `"x,y,angle,spread,particle_count"` strings) rather than the flat position/angle/spread fields;
 resolved entirely in PHP, so a renderer only ever sees concrete numbers either way.
 
+### JavaScript (Inertia Vue/React)
+
+The element itself has no JS equivalent — it's compiled native UI, only reachable from a Blade
+screen. `resources/js/` covers the one piece an SPA frontend can still use: triggering an
+already-mounted element without a Livewire round trip.
+
+@verbatim
+<code-snippet name="Triggering a burst from Inertia" lang="js">
+import { on } from '#nativephp';
+import { burst, Events } from 'noehassiel-confetti';
+
+await burst();          // hits ref="default"
+await burst('task-list');
+
+on(Events.ConfettiBurstFailed, ({ ref, reason }) => {
+    console.warn('No confetti element mounted for ref', ref, reason);
+});
+</code-snippet>
+@endverbatim
+
 ### Rules that matter
 
 - **Fire with a token, or `Confetti::burst()` when the token isn't reachable.** There is no
