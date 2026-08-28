@@ -87,7 +87,10 @@ struct ConfettiRenderer: View {
 
         // See the type doc: registered on every render, not just mount, so
         // Confetti::burst() always fires using the element's current props.
-        ConfettiRegistry.shared.register(ref: ref) {
+        // `let _ =` (not a bare statement) because `body` is @ViewBuilder —
+        // an unassigned Void-returning call there gets swept into the
+        // builder DSL and fails to typecheck as a View.
+        let _ = ConfettiRegistry.shared.register(ref: ref) {
             fire(props: p)
         }
 
