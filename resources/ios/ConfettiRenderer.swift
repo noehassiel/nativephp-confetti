@@ -29,6 +29,12 @@ import SwiftUI
  * every render (not just mount) so a burst() always uses this element's
  * CURRENT props — preset/colors rarely change at runtime, but this costs
  * nothing to get right regardless.
+ *
+ * Most presets fire from one origin (`position_x`/`angle`/`spread`), but a
+ * preset MAY set `groups` instead — several simultaneous emission points
+ * (e.g. `corners`'s two converging cannons). `fire()` builds one `SpawnGroup`
+ * from the flat fields when `groups` is absent, so the rest of the particle
+ * generation code never has to know which case it's in.
  */
 struct ConfettiRenderer: View {
     let node: NativeUINode
@@ -212,55 +218,96 @@ struct ConfettiRenderer: View {
         }
     }
 
+    /// One simultaneous emission point. The single-origin presets produce
+    /// exactly one of these from their flat `position_x`/`angle`/`spread`
+    /// props; a preset with `groups` (the converging-cannons `corners`
+    /// preset, say) produces several, and every group is fired in the same
+    /// `fire()` call so they animate together.
+    private struct SpawnGroup {
+        let positionX: CGFloat
+        let positionY: CGFloat
+        let angle: Double
+        let spread: Double
+        let particleCount: Int
+    }
+
+    /// Parses `"x,y,angle,spread,particle_count"` — the wire format for
+    /// `groups`, chosen because it rides the same string-list mechanism
+    /// `colors` already uses rather than needing a new nested prop type.
+    /// A malformed entry is dropped rather than crashing the whole burst.
+    private func parseGroups(_ raw: [String]) -> [SpawnGroup] {
+        raw.compactMap { entry in
+            let parts = entry.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+
+            guard parts.count >= 5,
+                  let x = Double(parts[0]), let y = Double(parts[1]),
+                  let angle = Double(parts[2]), let spread = Double(parts[3]),
+                  let count = Int(parts[4])
+            else { return nil }
+
+            return SpawnGroup(positionX: CGFloat(x), positionY: CGFloat(y), angle: angle, spread: spread, particleCount: count)
+        }
+    }
+
     private func fire(props p: GenericProps) {
-        let angle = Double(p.getInt("angle", default: 270))
-        let spread = Double(p.getInt("spread", default: 90))
         let speed = CGFloat(p.getFloat("speed", default: 10))
         let maxSpeed = CGFloat(p.getFloat("max_speed", default: 30))
-        let particleCount = max(0, p.getInt("particle_count", default: 80))
         let durationSeconds = Double(p.getInt("duration_ms", default: 300)) / 1000.0
         let timeToLive = Double(p.getInt("time_to_live_ms", default: 2500)) / 1000.0
         let fadeOut = p.getBool("fade_out", default: true)
-        let positionX = CGFloat(p.getFloat("position_x", default: 0.5))
-        let positionY = CGFloat(p.getFloat("position_y", default: 0.3))
 
         let colorStrings = p.getStringList("colors")
         let colors: [Color] = (colorStrings.isEmpty ? Self.defaultColors : colorStrings)
             .map { colorFromARGB(ColorParser.parse($0)) }
 
+        let groupStrings = p.getStringList("groups")
+        let groups: [SpawnGroup] = groupStrings.isEmpty
+            ? [SpawnGroup(
+                positionX: CGFloat(p.getFloat("position_x", default: 0.5)),
+                positionY: CGFloat(p.getFloat("position_y", default: 0.3)),
+                angle: Double(p.getInt("angle", default: 270)),
+                spread: Double(p.getInt("spread", default: 90)),
+                particleCount: max(0, p.getInt("particle_count", default: 80))
+              )]
+            : parseGroups(groupStrings)
+
         let now = Date()
 
         isIdle = false
 
-        particles = (0..<particleCount).map { _ in
-            let particleAngle = (angle + Double.random(in: -spread / 2...spread / 2)) * .pi / 180
-            let particleSpeed = CGFloat.random(in: speed...max(speed, maxSpeed)) * Self.speedToPointsPerSecond
-            // Staggered across duration_ms rather than all at once, so a
-            // "rain"/"festive" preset trickles the way Konfetti's Emitter
-            // does on Android instead of dumping every particle at frame 0.
-            let spawnDelay = durationSeconds > 0 ? Double.random(in: 0...durationSeconds) : 0
+        particles = groups.flatMap { group in
+            (0..<group.particleCount).map { _ in
+                let particleAngle = (group.angle + Double.random(in: -group.spread / 2...group.spread / 2)) * .pi / 180
+                let particleSpeed = CGFloat.random(in: speed...max(speed, maxSpeed)) * Self.speedToPointsPerSecond
+                // Staggered across duration_ms rather than all at once, so
+                // a "rain"/"festive" preset trickles the way Konfetti's
+                // Emitter does on Android instead of dumping every
+                // particle at frame 0.
+                let spawnDelay = durationSeconds > 0 ? Double.random(in: 0...durationSeconds) : 0
 
-            return Particle(
-                x: min(max(positionX + CGFloat.random(in: Self.originJitterX), 0), 1),
-                y: min(max(positionY + CGFloat.random(in: Self.originJitterY), 0), 1),
-                vx: cos(particleAngle) * particleSpeed,
-                // Konfetti's angle convention is already measured clockwise
-                // in SCREEN space (TOP = 270°, BOTTOM = 90°) — sin(270°) is
-                // already -1, i.e. already "up" on a y-grows-down screen,
-                // so this needs NO extra sign flip. An earlier version
-                // negated it here, which fired every burst downward instead
-                // of up and made gravity win almost immediately.
-                vy: sin(particleAngle) * particleSpeed,
-                rotation: Double.random(in: 0..<(2 * .pi)),
-                rotationSpeed: Double.random(in: -6...6),
-                flipSpeed: Double.random(in: 2...6),
-                color: colors.randomElement() ?? .yellow,
-                size: CGFloat.random(in: 7...13),
-                shape: Bool.random() ? .square : .circle,
-                spawnAt: now.addingTimeInterval(spawnDelay),
-                timeToLive: timeToLive,
-                fadeOut: fadeOut
-            )
+                return Particle(
+                    x: min(max(group.positionX + CGFloat.random(in: Self.originJitterX), 0), 1),
+                    y: min(max(group.positionY + CGFloat.random(in: Self.originJitterY), 0), 1),
+                    vx: cos(particleAngle) * particleSpeed,
+                    // Konfetti's angle convention is already measured
+                    // clockwise in SCREEN space (TOP = 270°, BOTTOM = 90°)
+                    // — sin(270°) is already -1, i.e. already "up" on a
+                    // y-grows-down screen, so this needs NO extra sign
+                    // flip. An earlier version negated it here, which
+                    // fired every burst downward instead of up and made
+                    // gravity win almost immediately.
+                    vy: sin(particleAngle) * particleSpeed,
+                    rotation: Double.random(in: 0..<(2 * .pi)),
+                    rotationSpeed: Double.random(in: -6...6),
+                    flipSpeed: Double.random(in: 2...6),
+                    color: colors.randomElement() ?? .yellow,
+                    size: CGFloat.random(in: 7...13),
+                    shape: Bool.random() ? .square : .circle,
+                    spawnAt: now.addingTimeInterval(spawnDelay),
+                    timeToLive: timeToLive,
+                    fadeOut: fadeOut
+                )
+            }
         }
     }
 

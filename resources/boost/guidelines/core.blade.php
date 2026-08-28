@@ -45,7 +45,7 @@ public function confettiFinished(): void
 
 ### Attributes
 
-`fire-token`, `preset` (`burst` default, `rain`, `cannon`, `explode`, `festive`), `colors`
+`fire-token`, `preset` (`burst` default, `rain`, `cannon`, `explode`, `festive`, `corners`), `colors`
 (tailwind names / hex / CSS names), `particle-count`, `duration-ms`, `angle`, `spread`, `speed`,
 `max-speed`, `damping`, `position-x`, `position-y`, `time-to-live-ms`, `fade-out` (default
 `true`), `_finished`, `ref` (default `'default'` — target for `Confetti::burst($ref)`). Every
@@ -71,6 +71,13 @@ Give the element an explicit `ref` when a screen has more than one, and pass the
 `burst($ref)`. It reaches the SAME mounted renderer `fire-token` would — its own `_finished`
 callback still fires once the burst ends. `ConfettiBurstFailed` (`ref`, `reason`) fires instead
 when no confetti element with that ref is mounted.
+
+### The `corners` preset
+
+Fires two cannons simultaneously from the bottom corners, angled up and inward, converging over
+the top-center — most other presets fire from one point. It rides a `groups` prop (a list of
+`"x,y,angle,spread,particle_count"` strings) rather than the flat position/angle/spread fields;
+resolved entirely in PHP, so a renderer only ever sees concrete numbers either way.
 
 ### Rules that matter
 

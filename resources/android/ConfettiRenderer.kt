@@ -41,6 +41,11 @@ import java.util.concurrent.TimeUnit
  * owns that state), or call `Confetti::burst($ref)` from anywhere else,
  * which reaches [ConfettiRegistry] instead. Both funnel through the same
  * `startBurst()` so neither path can drift from the other.
+ *
+ * Most presets fire from one origin (`position_x`/`angle`/`spread`), but a
+ * preset MAY set `groups` instead — several simultaneous emission points
+ * (e.g. `corners`'s two converging cannons), one `Party` per group, all in
+ * the same `parties` list Konfetti already accepts.
  */
 object ConfettiRenderer {
 
@@ -68,24 +73,47 @@ object ConfettiRenderer {
                 .map { ColorParser.parse(it) }
                 .ifEmpty { DEFAULT_COLORS }
 
-            parties = listOf(
-                Party(
-                    angle = p.getInt("angle", 270),
-                    spread = p.getInt("spread", 90),
-                    speed = p.getFloat("speed", 10f),
-                    maxSpeed = p.getFloat("max_speed", 30f),
-                    damping = p.getFloat("damping", 0.9f),
-                    colors = colors,
-                    timeToLive = p.getInt("time_to_live_ms", 2500).toLong(),
-                    fadeOutEnabled = p.getBool("fade_out", true),
-                    position = Position.Relative(
-                        p.getFloat("position_x", 0.5f).toDouble(),
-                        p.getFloat("position_y", 0.3f).toDouble(),
-                    ),
-                    emitter = Emitter(p.getInt("duration_ms", 300).toLong(), TimeUnit.MILLISECONDS)
-                        .max(p.getInt("particle_count", 80)),
-                ),
+            val speed = p.getFloat("speed", 10f)
+            val maxSpeed = p.getFloat("max_speed", 30f)
+            val damping = p.getFloat("damping", 0.9f)
+            val timeToLive = p.getInt("time_to_live_ms", 2500).toLong()
+            val fadeOut = p.getBool("fade_out", true)
+            val durationMs = p.getInt("duration_ms", 300).toLong()
+
+            fun partyFor(x: Float, y: Float, angle: Int, spread: Int, particleCount: Int) = Party(
+                angle = angle,
+                spread = spread,
+                speed = speed,
+                maxSpeed = maxSpeed,
+                damping = damping,
+                colors = colors,
+                timeToLive = timeToLive,
+                fadeOutEnabled = fadeOut,
+                position = Position.Relative(x.toDouble(), y.toDouble()),
+                emitter = Emitter(durationMs, TimeUnit.MILLISECONDS).max(particleCount),
             )
+
+            // `groups` (e.g. the `corners` preset's two converging cannons)
+            // overrides the single origin/angle/spread below with several
+            // simultaneous emission points — Konfetti's own `parties` param
+            // already accepts a list, so this is just building more than
+            // one. Falls back to the flat fields for every preset that
+            // doesn't set groups, unchanged from before.
+            val groups = p.getStringList("groups").mapNotNull(::parseGroup)
+
+            parties = if (groups.isNotEmpty()) {
+                groups.map { partyFor(it.x, it.y, it.angle, it.spread, it.particleCount) }
+            } else {
+                listOf(
+                    partyFor(
+                        p.getFloat("position_x", 0.5f),
+                        p.getFloat("position_y", 0.3f),
+                        p.getInt("angle", 270),
+                        p.getInt("spread", 90),
+                        p.getInt("particle_count", 80),
+                    ),
+                )
+            }
             burstGeneration++
         }
 
@@ -156,4 +184,37 @@ object ConfettiRenderer {
         ColorParser.parse("#F4306D"),
         ColorParser.parse("#B48DEF"),
     )
+
+    /** One simultaneous emission point, decoded from a `groups` entry. */
+    private data class Group(
+        val x: Float,
+        val y: Float,
+        val angle: Int,
+        val spread: Int,
+        val particleCount: Int,
+    )
+
+    /**
+     * Parses a `"x,y,angle,spread,particle_count"` string — the wire format
+     * for `groups`, chosen because it rides the same string-list mechanism
+     * `colors` already uses rather than needing a new nested prop type.
+     * Returns null for a malformed entry rather than crashing the burst
+     * over one bad string; a null is simply dropped from the group list.
+     */
+    private fun parseGroup(raw: String): Group? {
+        val parts = raw.split(",").map { it.trim() }
+        if (parts.size < 5) return null
+
+        return try {
+            Group(
+                x = parts[0].toFloat(),
+                y = parts[1].toFloat(),
+                angle = parts[2].toFloat().toInt(),
+                spread = parts[3].toFloat().toInt(),
+                particleCount = parts[4].toFloat().toInt(),
+            )
+        } catch (_: NumberFormatException) {
+            null
+        }
+    }
 }

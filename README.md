@@ -117,7 +117,7 @@ public function confettiMissing(string $ref, string $reason): void
 | Attribute | Type | Default | Notes |
 |---|---|---|---|
 | `fire-token` | int\|string | — | **Any change fires a burst.** The value itself is arbitrary. |
-| `preset` | string | `burst` | `burst` \| `rain` \| `cannon` \| `explode` \| `festive` |
+| `preset` | string | `burst` | `burst` \| `rain` \| `cannon` \| `explode` \| `festive` \| `corners` |
 | `colors` | string[] | preset palette | Tailwind palette names, hex, or CSS color names |
 | `particle-count` | int | preset | |
 | `duration-ms` | int | preset | How long the burst spreads its particle spawns over |
@@ -134,6 +134,23 @@ public function confettiMissing(string $ref, string $reason): void
 Every preset is a PHP-only concept — `Confetti::resolveProps()` expands it into concrete numbers
 before the node reaches either renderer, so the two platforms can never drift on what a preset
 means. An attribute you set explicitly always overrides the preset's value for that one prop.
+
+## The `corners` preset — converging side cannons
+
+Most presets fire from a single point. `corners` is different: it fires two cannons
+simultaneously from the bottom-left and bottom-right corners, both angled up and inward, meeting
+over the top-center — the classic "confetti celebration" look.
+
+```blade
+<native:confetti :fire-token="$celebrateToken" preset="corners" class="w-full h-full" />
+```
+
+Under the hood this rides a `groups` prop — a list of `"x,y,angle,spread,particle_count"`
+strings, one per simultaneous emission point — instead of the flat `position-x`/`angle`/`spread`
+attributes. It's resolved entirely in PHP (`Confetti::PRESETS['corners']`); both renderers read
+`groups` first and only fall back to the flat single-origin fields when it's absent, so every
+other preset behaves exactly as before. There's no Blade attribute for `groups` — it's a
+preset-only mechanism for now.
 
 ## Rules that matter
 

@@ -66,6 +66,27 @@ class Confetti extends Element
             'damping' => 0.95, 'particle_count' => 200, 'duration_ms' => 4000,
             'position_x' => 0.5, 'position_y' => 0.0, 'time_to_live_ms' => 5000,
         ],
+        // Two cannons at the bottom corners, angled up and inward, meeting
+        // over the top-center — the classic "converging side cannons"
+        // celebration. `groups` overrides the single angle/spread/position
+        // above with two independent emission points; the flat fields stay
+        // as a sane single-origin fallback for a renderer that predates
+        // groups support. See the `groups` doc on resolveProps() for the
+        // wire format.
+        'corners' => [
+            'angle' => 270, 'spread' => 60, 'speed' => 16.0, 'max_speed' => 46.0,
+            'damping' => 0.94, 'particle_count' => 180, 'duration_ms' => 350,
+            'position_x' => 0.5, 'position_y' => 0.95, 'time_to_live_ms' => 3800,
+            'groups' => [
+                // "x,y,angle,spread,particle_count" — angle/spread use the
+                // same clockwise-in-screen convention as everywhere else
+                // (TOP=270, RIGHT=0, BOTTOM=90, LEFT=180). 315 is halfway
+                // between "up" and "right"; 225 is halfway between "up"
+                // and "left" — both cannons aim in toward the top-center.
+                '0.02,0.98,315,70,90',
+                '0.98,0.98,225,70,90',
+            ],
+        ],
     ];
 
     /** Fallback palette when no `colors` prop is set. */
@@ -290,6 +311,15 @@ class Confetti extends Element
      * Expand the preset, overlay explicit props, normalize colors to hex, and
      * register the callback. Both renderers only ever see fully concrete
      * numbers — a preset is a PHP-only concept.
+     *
+     * A preset MAY additionally set `groups` — a list of
+     * `"x,y,angle,spread,particle_count"` strings, one per simultaneous
+     * emission point (e.g. `corners`'s two converging cannons). It rides
+     * the same string-list wire mechanism `colors` already uses, so no new
+     * prop type is needed. A renderer reads `groups` first and only falls
+     * back to the flat `position_x`/`angle`/`spread`/`particle_count`
+     * fields when it's empty — every preset that doesn't set `groups`
+     * behaves exactly as before.
      *
      * @return array<string, mixed>
      */
