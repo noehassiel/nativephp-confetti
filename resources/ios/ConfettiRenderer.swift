@@ -7,12 +7,16 @@ import SwiftUI
  * SwiftUI renderer tree, so unlike the Android half (which reuses Konfetti)
  * this is bespoke physics tuned to match it: gravity, a per-frame `damping`
  * multiplier on velocity, particles staggered across `duration_ms` rather
- * than all spawning at once, and a fade over the tail of each particle's
- * `time_to_live`. All the numbers driving it — angle, spread, speed,
- * damping, colors, ... — arrive already resolved: PHP expands whatever
- * `preset` was chosen and overlays explicit props before the node reaches
- * the wire, so this renderer never has to know what a preset means, and
- * both platforms read the identical prop surface.
+ * than all spawning at once, a fade over the tail of each particle's
+ * `time_to_live`, spawn points jittered across an AREA rather than one
+ * pixel, and the same width-flattening "3D flip" illusion Konfetti's own
+ * engine uses (`Confetti.kt`'s `rotationWidth`/`scaleX`) so a flat shape
+ * reads as tumbling paper rather than a plain dot. All the numbers driving
+ * it — angle, spread, speed, damping, colors, ... — arrive already
+ * resolved: PHP expands whatever `preset` was chosen and overlays explicit
+ * props before the node reaches the wire, so this renderer never has to
+ * know what a preset means, and both platforms read the identical prop
+ * surface.
  *
  * `.allowsHitTesting(false)` matters here in the way it does NOT for
  * `SignaturePadRenderer` — that pad needs touches, confetti must never
@@ -33,21 +37,34 @@ struct ConfettiRenderer: View {
     @State private var lastFireToken: String?
     @State private var isIdle = true
 
-    /// Set once per burst by `fire()`, resolved into pixel coordinates by
-    /// the first `step()` after it, once the canvas size is known — `fire()`
-    /// only ever sees the element's own relative (0–1) position props.
-    @State private var pendingRelativeOrigin: (x: CGFloat, y: CGFloat)?
+    private enum ParticleShape {
+        case square, circle
+    }
 
     private struct Particle: Identifiable {
         let id = UUID()
+
+        /// Relative (0–1) at creation; `step()` resolves it to absolute
+        /// canvas points the first time it sees `isOriginResolved == false`,
+        /// once the canvas size is known. Each particle carries its OWN
+        /// origin (already jittered by `fire()`) rather than sharing one
+        /// pending point, so a burst reads as coming from an AREA.
         var x: CGFloat
         var y: CGFloat
+        var isOriginResolved = false
+
         var vx: CGFloat
         var vy: CGFloat
         var rotation: Double
         var rotationSpeed: Double
+
+        /// Flips per second for the width-flattening illusion below —
+        /// varied per particle so a burst doesn't flutter in unison.
+        let flipSpeed: Double
+
         var color: Color
         var size: CGFloat
+        let shape: ParticleShape
         let spawnAt: Date
         let timeToLive: Double
         let fadeOut: Bool
@@ -72,6 +89,20 @@ struct ConfettiRenderer: View {
 
             return max(0, 1 - (elapsed - fadeStart) / (timeToLive - fadeStart))
         }
+
+        /// The "3D flip": Konfetti continuously shrinks a shape's drawn
+        /// width to zero and back (`rotationWidth` in `Confetti.kt`), which
+        /// combined with a 2D rotation makes a flat square read as a piece
+        /// of paper tumbling edge-on rather than a static dot. Derived
+        /// straight from elapsed time (a triangle wave 1→0→1) instead of
+        /// integrating a mutable field every frame — same visual result,
+        /// no extra per-frame state to carry.
+        func flutterScaleX(at now: Date) -> CGFloat {
+            let elapsed = now.timeIntervalSince(spawnAt)
+            let cycle = (elapsed * flipSpeed).truncatingRemainder(dividingBy: 1)
+
+            return CGFloat(abs(cycle - 0.5) * 2)
+        }
     }
 
     /// Gravity in points/second², tuned to read the same as Konfetti's own
@@ -90,6 +121,13 @@ struct ConfettiRenderer: View {
     /// for the identical prop value, which is what made early builds look
     /// like a tiny, barely-moving clump instead of a burst.
     private static let speedToPointsPerSecond: CGFloat = 60
+
+    /// How far a particle's spawn point is jittered from `position_x` /
+    /// `position_y`, as a fraction of the canvas. A wide `spread` angle
+    /// alone still reads as fireworks from one pixel; real confetti effects
+    /// fire from an AREA, not a point.
+    private static let originJitterX: ClosedRange<CGFloat> = -0.3...0.3
+    private static let originJitterY: ClosedRange<CGFloat> = -0.05...0.05
 
     var body: some View {
         let p = node.props
@@ -116,18 +154,28 @@ struct ConfettiRenderer: View {
                         var resolved = canvasContext
                         resolved.opacity = particle.opacity(at: now)
 
+                        // Squares are drawn as strips (wider than tall), not
+                        // squares at rest — closer to real confetti paper
+                        // than a perfect square even before it flutters.
+                        let width = particle.shape == .square ? particle.size * 1.8 : particle.size
+                        let height = particle.size
                         let rect = CGRect(
-                            x: particle.x - particle.size / 2,
-                            y: particle.y - particle.size / 2,
-                            width: particle.size,
-                            height: particle.size
+                            x: particle.x - width / 2,
+                            y: particle.y - height / 2,
+                            width: width,
+                            height: height
                         )
 
                         resolved.translateBy(x: rect.midX, y: rect.midY)
                         resolved.rotate(by: .radians(particle.rotation))
+                        resolved.scaleBy(x: particle.flutterScaleX(at: now), y: 1)
                         resolved.translateBy(x: -rect.midX, y: -rect.midY)
 
-                        resolved.fill(Path(ellipseIn: rect), with: .color(particle.color))
+                        let path: Path = particle.shape == .circle
+                            ? Path(ellipseIn: rect)
+                            : Path(rect)
+
+                        resolved.fill(path, with: .color(particle.color))
                     }
                 }
                 .onChange(of: context.date) { now in
@@ -183,7 +231,6 @@ struct ConfettiRenderer: View {
         let now = Date()
 
         isIdle = false
-        pendingRelativeOrigin = (positionX, positionY)
 
         particles = (0..<particleCount).map { _ in
             let particleAngle = (angle + Double.random(in: -spread / 2...spread / 2)) * .pi / 180
@@ -194,8 +241,8 @@ struct ConfettiRenderer: View {
             let spawnDelay = durationSeconds > 0 ? Double.random(in: 0...durationSeconds) : 0
 
             return Particle(
-                x: positionX,
-                y: positionY,
+                x: min(max(positionX + CGFloat.random(in: Self.originJitterX), 0), 1),
+                y: min(max(positionY + CGFloat.random(in: Self.originJitterY), 0), 1),
                 vx: cos(particleAngle) * particleSpeed,
                 // Konfetti's angle convention is already measured clockwise
                 // in SCREEN space (TOP = 270°, BOTTOM = 90°) — sin(270°) is
@@ -206,8 +253,10 @@ struct ConfettiRenderer: View {
                 vy: sin(particleAngle) * particleSpeed,
                 rotation: Double.random(in: 0..<(2 * .pi)),
                 rotationSpeed: Double.random(in: -6...6),
+                flipSpeed: Double.random(in: 2...6),
                 color: colors.randomElement() ?? .yellow,
-                size: CGFloat.random(in: 6...12),
+                size: CGFloat.random(in: 7...13),
+                shape: Bool.random() ? .square : .circle,
                 spawnAt: now.addingTimeInterval(spawnDelay),
                 timeToLive: timeToLive,
                 fadeOut: fadeOut
@@ -218,20 +267,17 @@ struct ConfettiRenderer: View {
     private func step(deltaTime: CGFloat, canvasSize: CGSize, now: Date) {
         guard !particles.isEmpty else { return }
 
-        if let origin = pendingRelativeOrigin {
-            pendingRelativeOrigin = nil
-            let originX = origin.x * canvasSize.width
-            let originY = origin.y * canvasSize.height
-
-            for index in particles.indices {
-                particles[index].x = originX
-                particles[index].y = originY
-            }
-        }
-
         let dampingFactor = CGFloat(pow(Double(dampingValue), Double(deltaTime * 60)))
 
-        for index in particles.indices where particles[index].hasSpawned(at: now) {
+        for index in particles.indices {
+            if !particles[index].isOriginResolved {
+                particles[index].x *= canvasSize.width
+                particles[index].y *= canvasSize.height
+                particles[index].isOriginResolved = true
+            }
+
+            guard particles[index].hasSpawned(at: now) else { continue }
+
             particles[index].vy += gravity * deltaTime
             particles[index].x += particles[index].vx * deltaTime
             particles[index].y += particles[index].vy * deltaTime

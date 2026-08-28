@@ -42,9 +42,9 @@ class Confetti extends Element
      */
     private const PRESETS = [
         'burst' => [
-            'angle' => 270, 'spread' => 90, 'speed' => 10.0, 'max_speed' => 30.0,
-            'damping' => 0.9, 'particle_count' => 80, 'duration_ms' => 300,
-            'position_x' => 0.5, 'position_y' => 0.3, 'time_to_live_ms' => 2500,
+            'angle' => 270, 'spread' => 170, 'speed' => 14.0, 'max_speed' => 42.0,
+            'damping' => 0.94, 'particle_count' => 150, 'duration_ms' => 350,
+            'position_x' => 0.5, 'position_y' => 0.4, 'time_to_live_ms' => 3500,
         ],
         'rain' => [
             'angle' => 270, 'spread' => 45, 'speed' => 4.0, 'max_speed' => 8.0,
