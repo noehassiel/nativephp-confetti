@@ -10,16 +10,6 @@ new element type rather than an arrangement of existing ones — the case the
 [UI Component Plugin](https://nativephp.com/docs/mobile/4/plugins/ui-components) mechanism exists
 for.
 
-## Why not [ConfettiKit](https://github.com/vinceglb/ConfettiKit)?
-
-ConfettiKit is a great library, but it's Compose *Multiplatform* — its iOS target is Compose-on-iOS,
-not SwiftUI, and NativePHP's iOS renderer tree is SwiftUI. Using it would mean bundling the entire
-Compose Multiplatform runtime into the IPA just to bridge Compose into a SwiftUI tree — no smaller
-or simpler than writing SwiftUI directly. ConfettiKit is itself a Kotlin Multiplatform port of
-Konfetti, so this package uses the original Konfetti on Android (same `Party`/`Emitter`/`Position`
-API, no Compose Multiplatform runtime, no Kotlin 2.1+ floor) and a from-scratch SwiftUI
-`TimelineView` + `Canvas` particle system on iOS, tuned to the same physics model.
-
 ## Install
 
 ```shell
