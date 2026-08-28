@@ -1,0 +1,47 @@
+{
+    "name": "noehassiel/confetti",
+    "description": "Native confetti celebrations for NativePHP Mobile — a custom EDGE element backed by Konfetti (Jetpack Compose) on Android and a hand-rolled SwiftUI particle system on iOS.",
+    "keywords": [
+        "nativephp",
+        "mobile",
+        "ios",
+        "android",
+        "confetti",
+        "edge-component",
+        "laravel"
+    ],
+    "homepage": "https://github.com/noehassiel/nativephp-confetti",
+    "support": {
+        "issues": "https://github.com/noehassiel/nativephp-confetti/issues",
+        "source": "https://github.com/noehassiel/nativephp-confetti"
+    },
+    "type": "nativephp-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "noehassiel",
+            "email": "hello@noehassiel.com",
+            "role": "Creator"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "nativephp/mobile": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Noehassiel\\Confetti\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Noehassiel\\Confetti\\ConfettiServiceProvider"
+            ]
+        },
+        "nativephp": {
+            "manifest": "nativephp.json"
+        }
+    },
+    "minimum-stability": "stable"
+}

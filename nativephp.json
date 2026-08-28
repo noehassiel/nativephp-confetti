@@ -1,0 +1,34 @@
+{
+    "namespace": "Confetti",
+    "components": [
+        {
+            "type": "confetti",
+            "element": "Noehassiel\\Confetti\\Elements\\Confetti",
+            "blade": "Noehassiel\\Confetti\\Components\\Confetti",
+            "android_renderer": "com.noehassiel.plugins.confetti.ui.ConfettiRenderer",
+            "ios_renderer": "ConfettiRenderer",
+            "self_closing": true
+        }
+    ],
+    "android": {
+        "min_version": 26,
+        "permissions": [],
+        "dependencies": {
+            "implementation": [
+                "nl.dionsegijn:konfetti-compose:2.0.5"
+            ]
+        },
+        "activities": [],
+        "services": [],
+        "receivers": [],
+        "providers": []
+    },
+    "ios": {
+        "min_version": "16.0",
+        "info_plist": {},
+        "dependencies": {
+            "swift_packages": [],
+            "pods": []
+        }
+    }
+}
