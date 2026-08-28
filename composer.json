@@ -16,7 +16,7 @@
         "source": "https://github.com/noehassiel/nativephp-confetti"
     },
     "type": "nativephp-plugin",
-    "license": "MIT",
+    "license": "proprietary",
     "authors": [
         {
             "name": "noehassiel",

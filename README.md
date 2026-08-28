@@ -201,4 +201,6 @@ preset-only mechanism for now.
 
 ## License
 
-MIT.
+Proprietary. All rights reserved © noehassiel. See [LICENSE](LICENSE). Redistribution, resale, or
+republishing of this package — in source or compiled form — is not permitted without prior
+written permission from the copyright holder.
