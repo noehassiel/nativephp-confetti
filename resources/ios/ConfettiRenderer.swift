@@ -78,6 +78,19 @@ struct ConfettiRenderer: View {
     /// default fall speed at similar `speed`/`maxSpeed` values.
     private let gravity: CGFloat = 60
 
+    /// Konfetti's own engine treats a Party's `speed`/`maxSpeed` as points
+    /// displaced per RENDERED FRAME, not per second — its position update
+    /// multiplies velocity by `deltaTime * frameRate`, and frameRate is
+    /// recomputed as `1 / deltaTime` every frame, so those cancel out and
+    /// the raw prop value is applied once per frame regardless of the
+    /// actual frame rate. This renderer integrates true points-per-second
+    /// instead (deltaTime-scaled, not frame-count-scaled), so the SAME
+    /// preset numbers (a `speed` of 10, say) need converting to match —
+    /// otherwise iOS moves particles ~60x slower than Android's Konfetti
+    /// for the identical prop value, which is what made early builds look
+    /// like a tiny, barely-moving clump instead of a burst.
+    private static let speedToPointsPerSecond: CGFloat = 60
+
     var body: some View {
         let p = node.props
 
@@ -174,7 +187,7 @@ struct ConfettiRenderer: View {
 
         particles = (0..<particleCount).map { _ in
             let particleAngle = (angle + Double.random(in: -spread / 2...spread / 2)) * .pi / 180
-            let particleSpeed = CGFloat.random(in: speed...max(speed, maxSpeed))
+            let particleSpeed = CGFloat.random(in: speed...max(speed, maxSpeed)) * Self.speedToPointsPerSecond
             // Staggered across duration_ms rather than all at once, so a
             // "rain"/"festive" preset trickles the way Konfetti's Emitter
             // does on Android instead of dumping every particle at frame 0.
@@ -184,10 +197,13 @@ struct ConfettiRenderer: View {
                 x: positionX,
                 y: positionY,
                 vx: cos(particleAngle) * particleSpeed,
-                // Screen y grows downward; a particle fired at 270°
-                // (straight up, matching Konfetti's angle convention)
-                // needs negative vy, hence the sign flip here.
-                vy: -sin(particleAngle) * particleSpeed,
+                // Konfetti's angle convention is already measured clockwise
+                // in SCREEN space (TOP = 270°, BOTTOM = 90°) — sin(270°) is
+                // already -1, i.e. already "up" on a y-grows-down screen,
+                // so this needs NO extra sign flip. An earlier version
+                // negated it here, which fired every burst downward instead
+                // of up and made gravity win almost immediately.
+                vy: sin(particleAngle) * particleSpeed,
                 rotation: Double.random(in: 0..<(2 * .pi)),
                 rotationSpeed: Double.random(in: -6...6),
                 color: colors.randomElement() ?? .yellow,
