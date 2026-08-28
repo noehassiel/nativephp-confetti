@@ -69,8 +69,14 @@ public function markComplete(): void
 
 Give the element an explicit `ref` when a screen has more than one, and pass the same string to
 `burst($ref)`. It reaches the SAME mounted renderer `fire-token` would — its own `_finished`
-callback still fires once the burst ends. `ConfettiBurstFailed` (`ref`, `reason`) fires instead
-when no confetti element with that ref is mounted.
+callback still fires once the burst ends, and it works with any preset. `ConfettiBurstFailed`
+(`ref`, `reason`) fires instead when no confetti element with that ref is mounted.
+
+**Ordering caveat:** `burst()` fires whatever props were last *published* to the device, not a
+change your own method makes moments earlier — a handler runs to completion before the framework
+re-renders and publishes, so `$this->preset = 'corners'; Confetti::burst();` in ONE method still
+fires the OLD preset. Change the preset through a normal render first; `burst()` on a LATER tap
+picks up whatever is actually on screen by then.
 
 ### The `corners` preset
 

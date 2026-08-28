@@ -98,8 +98,26 @@ Confetti::burst('task-list');
 ```
 
 `burst()` reaches the SAME mounted renderer `fire-token` would — its own `_finished` callback
-still fires once the burst ends. It's async like every other native call that has to reach the
-UI thread: if no confetti element with that ref is mounted, `ConfettiBurstFailed` fires instead.
+still fires once the burst ends, and it works with every preset (`corners` included), since it
+just re-triggers whatever props the element currently has. It's async like every other native
+call that has to reach the UI thread: if no confetti element with that ref is mounted,
+`ConfettiBurstFailed` fires instead.
+
+**One ordering caveat:** "whatever props the element currently has" means whatever was last
+*published* to the device — not a change your own method makes a line earlier. A handler runs to
+completion before the framework re-renders and publishes anything, so this fires the OLD preset,
+not the new one:
+
+```php
+public function switchAndBurst(): void
+{
+    $this->preset = 'corners'; // not on the device yet
+    Confetti::burst();          // fires whatever preset WAS already showing
+}
+```
+
+Change the preset through a normal render (a `:preset="$preset"` binding) first, and call
+`burst()` on a later tap once that's actually on screen.
 
 ```php
 use Noehassiel\Confetti\Events\ConfettiBurstFailed;
