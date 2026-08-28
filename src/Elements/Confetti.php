@@ -184,6 +184,20 @@ class Confetti extends Element
     }
 
     /**
+     * Stable id so Confetti::burst() can find this element from outside the
+     * component that renders it. Defaults to 'default' (not the node id, the
+     * way signature-pad's ref does) so a screen with a single confetti
+     * element needs no ref at all — Confetti::burst() with no argument
+     * already matches it.
+     */
+    public function ref(string $ref): static
+    {
+        $this->componentProps['ref'] = $ref;
+
+        return $this;
+    }
+
+    /**
      * Blade attributes → props.
      *
      * Plugin elements get no `instanceof` chain in the collector, so an
@@ -255,6 +269,10 @@ class Confetti extends Element
                 break;
             }
         }
+
+        if (! empty($attrs['ref'])) {
+            $this->ref((string) $attrs['ref']);
+        }
     }
 
     /** @return array<string, mixed> */
@@ -264,6 +282,7 @@ class Confetti extends Element
             'preset' => 'burst',
             'colors' => self::DEFAULT_COLORS,
             'fade_out' => true,
+            'ref' => 'default',
         ]);
     }
 

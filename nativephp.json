@@ -10,6 +10,14 @@
             "self_closing": true
         }
     ],
+    "bridge_functions": [
+        {
+            "name": "Confetti.Burst",
+            "android": "com.noehassiel.plugins.confetti.ConfettiFunctions.Burst",
+            "ios": "ConfettiFunctions.Burst",
+            "description": "Trigger a burst on a mounted <native:confetti> element from anywhere — an action method that doesn't hold the element's fire-token. Params: ref (string, optional, defaults to 'default' — the element's own ref attribute, or 'default' if unset). Async — dispatches ConfettiBurstFailed if no confetti element with that ref is mounted; on success the element's own burst (and, once it ends, its on_finished callback) fires exactly as if fire-token had been bumped."
+        }
+    ],
     "android": {
         "min_version": 26,
         "permissions": [],
@@ -30,5 +38,8 @@
             "swift_packages": [],
             "pods": []
         }
-    }
+    },
+    "events": [
+        "Noehassiel\\Confetti\\Events\\ConfettiBurstFailed"
+    ]
 }

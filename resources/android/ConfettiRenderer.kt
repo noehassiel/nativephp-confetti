@@ -2,13 +2,16 @@ package com.noehassiel.plugins.confetti.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.noehassiel.plugins.confetti.ConfettiRegistry
 import com.nativephp.mobile.ui.nativerender.ColorParser
 import com.nativephp.mobile.ui.nativerender.NativeUIBridge
 import com.nativephp.mobile.ui.nativerender.NativeUINode
@@ -33,6 +36,11 @@ import java.util.concurrent.TimeUnit
  * `KonfettiView` is a plain `Canvas` with no gesture modifiers, so it never
  * consumes touches on its own — no extra pass-through guard is needed for
  * confetti to sit over live UI on Android.
+ *
+ * Two ways to trigger a burst: bump `fire_token` (the element's own screen
+ * owns that state), or call `Confetti::burst($ref)` from anywhere else,
+ * which reaches [ConfettiRegistry] instead. Both funnel through the same
+ * `startBurst()` so neither path can drift from the other.
  */
 object ConfettiRenderer {
 
@@ -41,6 +49,7 @@ object ConfettiRenderer {
         val p = node.props
 
         val fireToken = p.getString("fire_token", "")
+        val ref = p.getString("ref", "default")
 
         // getCallbackId() returns a non-nullable Int with 0 as the "absent"
         // sentinel — compare `!= 0`, never `!= null`.
@@ -48,20 +57,13 @@ object ConfettiRenderer {
 
         var parties by remember { mutableStateOf<List<Party>>(emptyList()) }
 
-        // Seeded from whatever fire_token already is at mount — NOT "" —
-        // so an element whose initial token happens to be non-empty (e.g.
-        // PHP's default int property stringifies to "0") does not fire on
-        // first composition. Only a change AFTER mount fires.
-        var lastFireToken by remember { mutableStateOf(fireToken) }
+        // Bumped on every burst, from either trigger path, and used to key
+        // the KonfettiView below — see the note on that key() for why a
+        // fresh identity is required per burst rather than updating
+        // `parties` on an already-mounted instance.
+        var burstGeneration by remember { mutableStateOf(0) }
 
-        // Any change to fire_token starts a fresh emission — there is no
-        // imperative channel into a mounted view, so a token is the only
-        // way PHP reaches this renderer. An idle element (token never
-        // changed) never builds a Party, so it costs nothing.
-        LaunchedEffect(fireToken) {
-            if (fireToken == lastFireToken) return@LaunchedEffect
-            lastFireToken = fireToken
-
+        fun startBurst() {
             val colors = p.getStringList("colors")
                 .map { ColorParser.parse(it) }
                 .ifEmpty { DEFAULT_COLORS }
@@ -84,6 +86,36 @@ object ConfettiRenderer {
                         .max(p.getInt("particle_count", 80)),
                 ),
             )
+            burstGeneration++
+        }
+
+        // Seeded from whatever fire_token already is at mount — NOT "" —
+        // so an element whose initial token happens to be non-empty (e.g.
+        // PHP's default int property stringifies to "0") does not fire on
+        // first composition. Only a change AFTER mount fires.
+        var lastFireToken by remember { mutableStateOf(fireToken) }
+
+        // Any change to fire_token starts a fresh emission — there is no
+        // imperative channel into a mounted view, so a token is the only
+        // way PHP reaches this renderer BY DEFAULT. An idle element (token
+        // never changed) never builds a Party, so it costs nothing.
+        LaunchedEffect(fireToken) {
+            if (fireToken == lastFireToken) return@LaunchedEffect
+            lastFireToken = fireToken
+            startBurst()
+        }
+
+        // Registered on every committed composition (not just mount), so
+        // Confetti::burst() always triggers using this element's CURRENT
+        // props rather than whatever they were the first time it appeared —
+        // props like preset/colors rarely change at runtime, but SideEffect
+        // costs nothing extra to get this right regardless. Only teardown
+        // (on ref change or unmount) needs the disposable half.
+        SideEffect {
+            ConfettiRegistry.register(ref) { startBurst() }
+        }
+        DisposableEffect(ref) {
+            onDispose { ConfettiRegistry.unregister(ref) }
         }
 
         Box(modifier = modifier) {
@@ -91,11 +123,12 @@ object ConfettiRenderer {
             // fresh for each burst (toggling an Idle/Started state) rather
             // than updating `parties` on an already-mounted instance —
             // its internal `LaunchedEffect(Unit)` captures `parties` once
-            // and never re-reads it. `key(fireToken)` reproduces that: a
-            // new token forces Compose to dispose the old composable and
-            // mount a brand new one, so every burst gets its own effect.
+            // and never re-reads it. `key(burstGeneration)` reproduces
+            // that: a new generation forces Compose to dispose the old
+            // composable and mount a brand new one, so every burst — from
+            // either trigger path — gets its own effect.
             if (parties.isNotEmpty()) {
-                key(fireToken) {
+                key(burstGeneration) {
                     KonfettiView(
                         modifier = Modifier,
                         parties = parties,

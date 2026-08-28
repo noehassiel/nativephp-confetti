@@ -17,6 +17,14 @@ import SwiftUI
  * `.allowsHitTesting(false)` matters here in the way it does NOT for
  * `SignaturePadRenderer` — that pad needs touches, confetti must never
  * steal them from the UI it sits over.
+ *
+ * Two ways to trigger a burst: bump `fire-token` (the element's own screen
+ * owns that state), or call `Confetti::burst($ref)` from anywhere else,
+ * which reaches `ConfettiRegistry` instead. Both funnel through `fire()` so
+ * neither path can drift from the other. The registry entry is refreshed on
+ * every render (not just mount) so a burst() always uses this element's
+ * CURRENT props — preset/colors rarely change at runtime, but this costs
+ * nothing to get right regardless.
  */
 struct ConfettiRenderer: View {
     let node: NativeUINode
@@ -74,7 +82,14 @@ struct ConfettiRenderer: View {
         let p = node.props
 
         let fireToken = p.getString("fire_token", default: "")
+        let ref = p.getString("ref", default: "default")
         let onFinishedCb = p.getCallbackId("on_finished")
+
+        // See the type doc: registered on every render, not just mount, so
+        // Confetti::burst() always fires using the element's current props.
+        ConfettiRegistry.shared.register(ref: ref) {
+            fire(props: p)
+        }
 
         GeometryReader { geometry in
             TimelineView(.animation(minimumInterval: 1.0 / 60, paused: isIdle)) { context in
@@ -125,6 +140,11 @@ struct ConfettiRenderer: View {
             lastFireToken = token
 
             fire(props: p)
+        }
+        .onDisappear {
+            // A burst() against a dismissed element must fail rather than
+            // silently do nothing.
+            ConfettiRegistry.shared.unregister(ref: ref)
         }
     }
 

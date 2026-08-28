@@ -68,6 +68,50 @@ Place `<native:confetti>` **last** inside a [`<native:stack>`](https://nativephp
 so it layers on top of the screen content — it never intercepts touches, so nothing beneath it
 needs to change.
 
+## Triggering from anywhere — `Confetti::burst()`
+
+`fire-token` is the first-choice API, for when the screen holding the element already owns the
+token property. When the action that should celebrate can't see it — a service class, a queued
+job's completion handler, a shell-level action bar acting on a child component's screen — use the
+facade instead:
+
+```php
+use Noehassiel\Confetti\Facades\Confetti;
+
+public function markComplete(): void
+{
+    $this->task->complete();
+
+    Confetti::burst();   // hits the element with ref="default" — the default when unset
+}
+```
+
+Give the element an explicit `ref` if a screen has more than one, and pass the same string to
+`burst()`:
+
+```blade
+<native:confetti ref="task-list" :fire-token="$celebrateToken" preset="burst" class="w-full h-full" />
+```
+
+```php
+Confetti::burst('task-list');
+```
+
+`burst()` reaches the SAME mounted renderer `fire-token` would — its own `_finished` callback
+still fires once the burst ends. It's async like every other native call that has to reach the
+UI thread: if no confetti element with that ref is mounted, `ConfettiBurstFailed` fires instead.
+
+```php
+use Noehassiel\Confetti\Events\ConfettiBurstFailed;
+use Native\Mobile\Attributes\On;
+
+#[On(ConfettiBurstFailed::class)]
+public function confettiMissing(string $ref, string $reason): void
+{
+    // the screen holding the element probably isn't the one on screen
+}
+```
+
 ## Attributes
 
 | Attribute | Type | Default | Notes |
@@ -85,6 +129,7 @@ needs to change.
 | `time-to-live-ms` | int | preset | |
 | `fade-out` | bool | `true` | |
 | `_finished` | callback | — | Fires once every particle from the burst has died |
+| `ref` | string | `default` | Target for `Confetti::burst($ref)` — see below |
 
 Every preset is a PHP-only concept — `Confetti::resolveProps()` expands it into concrete numbers
 before the node reaches either renderer, so the two platforms can never drift on what a preset
@@ -92,9 +137,11 @@ means. An attribute you set explicitly always overrides the preset's value for t
 
 ## Rules that matter
 
-- **Fire with a token, not a method call.** There is no imperative channel into a mounted view —
-  the same constraint [noehassiel/signature-pad](https://github.com/noehassiel/nativephp-signature-pad)
-  documents. Bump `fire-token`; both renderers watch for the value changing.
+- **Fire with a token, or `Confetti::burst()` when the token isn't reachable.** There is no
+  imperative channel into a mounted view — the same constraint
+  [noehassiel/signature-pad](https://github.com/noehassiel/nativephp-signature-pad) documents.
+  `burst()` exists for exactly the case signature-pad's own `capture()` does: the caller that
+  should trigger it doesn't hold the element's state.
 - **An idle element costs nothing.** No particles exist, and no animation loop runs, until
   `fire-token` first changes after mount.
 - **Never intercepts touches.** Both renderers are explicitly non-interactive — confetti is meant
